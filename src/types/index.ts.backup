@@ -1,0 +1,130 @@
+// IPA PM試験採点システム - 型定義
+
+export interface Question {
+  id: string;
+  examId: string;
+  number: string;         // "問1"、"問2-1"など
+  title: string;
+  content: string;        // 問題文
+  intention: string;      // 出題趣旨
+  sampleAnswer: string;   // 回答例
+  maxScore: number;       // 配点
+}
+
+export interface Exam {
+  id: string;
+  name: string;
+  description: string;
+  questions: Question[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Answer {
+  id: string;
+  examId: string;
+  studentId: string;
+  questionId: string;
+  content: string;        // 受験者の回答
+  createdAt: Date;
+}
+
+export type GradeScore = '○' | '△' | '×';
+
+export interface FirstGrade {
+  score: GradeScore;
+  points: number;
+  reason: string;
+  gradedAt: Date;
+  graderId: string;       // LLM識別子
+}
+
+export interface SecondGrade {
+  score: GradeScore;
+  points: number;
+  reason: string;
+  gradedAt: Date;
+  graderId: string;       // 採点者名
+  changes: string;        // 変更理由
+}
+
+export interface GradingResult {
+  id: string;
+  answerId: string;
+  firstGrade: FirstGrade;
+  secondGrade?: SecondGrade;
+}
+
+// CSV入力データの型
+export interface CSVAnswerRow {
+  student_id: string;
+  question_id: string;
+  answer_content: string;
+}
+
+// LLM設定
+export interface LLMConfig {
+  endpoint: string;       // "http://localhost:1234/v1"
+  model: string;          // "gpt-4"
+  temperature: number;    // 0.1（一貫性重視）
+  maxTokens: number;      // 500
+  timeout: number;        // 30000ms
+}
+
+// 採点プロンプト
+export interface GradingPrompt {
+  systemPrompt: string;   // 採点者の役割定義
+  questionContext: string; // 問題文・出題趣旨・回答例
+  answerToGrade: string;  // 採点対象の回答
+  gradingCriteria: string; // 採点基準
+}
+
+// LLM採点レスポンス
+export interface LLMGradingResponse {
+  score: GradeScore;
+  points: number;
+  reason: string;
+}
+
+// アプリケーション状態
+export interface AppState {
+  currentExam: Exam | null;
+  answers: Answer[];
+  gradingResults: GradingResult[];
+  llmConfig: LLMConfig;
+  isLoading: boolean;
+  error: string | null;
+}
+
+// アクション型
+export type AppAction =
+  | { type: 'SET_EXAM'; payload: Exam }
+  | { type: 'SET_ANSWERS'; payload: Answer[] }
+  | { type: 'ADD_GRADING_RESULT'; payload: GradingResult }
+  | { type: 'UPDATE_GRADING_RESULT'; payload: GradingResult }
+  | { type: 'SET_LLM_CONFIG'; payload: LLMConfig }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'CLEAR_DATA' };
+
+// エクスポート形式
+export interface ExportData {
+  exam: Exam;
+  results: {
+    studentId: string;
+    questionId: string;
+    answer: string;
+    firstGrade: FirstGrade;
+    secondGrade?: SecondGrade;
+    finalScore: GradeScore;
+    finalPoints: number;
+  }[];
+  summary: {
+    totalStudents: number;
+    totalQuestions: number;
+    averageScore: number;
+    gradeDistribution: {
+      [key in GradeScore]: number;
+    };
+  };
+}

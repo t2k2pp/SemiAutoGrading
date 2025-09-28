@@ -1,0 +1,324 @@
+import type { LLMConfig, Question, Answer } from '../contexts/SimpleAppContext';
+
+interface LLMGradingResponse {
+  score: '○' | '△' | '×';
+  points: number;
+  reason: string;
+  confidence: number;
+}
+
+interface GradingPrompt {
+  system: string;
+  user: string;
+}
+
+export class LLMService {
+  private config: LLMConfig;
+
+  constructor(config: LLMConfig) {
+    this.config = config;
+  }
+
+  // 設定更新
+  updateConfig(config: LLMConfig): void {
+    this.config = config;
+  }
+
+  // LM Studio接続テスト
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.config.endpoint}/models`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(this.config.timeout),
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('LM Studio接続テストに失敗:', error);
+      return false;
+    }
+  }
+
+  // 利用可能なモデル一覧取得
+  async getAvailableModels(): Promise<string[]> {
+    try {
+      const response = await fetch(`${this.config.endpoint}/models`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(this.config.timeout),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.data?.map((model: any) => model.id) || [];
+    } catch (error) {
+      console.error('モデル一覧取得に失敗:', error);
+      throw new Error('モデル一覧の取得に失敗しました');
+    }
+  }
+
+  // 採点プロンプト生成
+  private generateGradingPrompt(question: Question, answer: Answer): GradingPrompt {
+    const systemPrompt = `あなたはIPA プロジェクトマネージャー試験の採点者です。
+以下の基準で回答を採点し、JSON形式で結果を返してください。
+
+採点基準：
+- ○：回答例と同等レベルの内容（80%以上の要素を満たす）
+- △：部分的に正解（50-79%の要素を満たす）
+- ×：不正解または的外れ（50%未満）
+
+出力は必ず以下のJSON形式で返してください：
+{
+  "score": "○" | "△" | "×",
+  "points": 採点点数（数値）,
+  "reason": "採点理由（100文字以内の文字列）"
+}`;
+
+    const questionContext = `【問題】
+${question.content}
+
+【出題趣旨】
+${question.intention}
+
+【回答例】
+${question.sampleAnswer}
+
+【配点】
+${question.maxScore}点`;
+
+    const answerToGrade = `【採点対象回答】
+学生ID: ${answer.studentId}
+回答内容: ${answer.content}`;
+
+    const gradingCriteria = `【詳細採点基準】
+- 問題の要求を正確に理解しているか
+- 出題趣旨に沿った回答になっているか
+- 回答例の要素をどの程度含んでいるか
+- PM試験として適切な知識・表現が使われているか
+- 論理的で一貫性のある内容か`;
+
+    return {
+      systemPrompt,
+      questionContext,
+      answerToGrade,
+      gradingCriteria,
+    };
+  }
+
+  // LLMを使った採点実行
+  async gradeAnswer(question: Question, answer: Answer): Promise<LLMGradingResponse> {
+    const prompt = this.generateGradingPrompt(question, answer);
+
+    const userPrompt = `${prompt.questionContext}
+
+${prompt.answerToGrade}
+
+${prompt.gradingCriteria}
+
+上記の情報を基に、採点を行ってください。`;
+
+    try {
+      const response = await fetch(`${this.config.endpoint}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer dummy-key`, // LM Studioでは通常不要だが、互換性のため
+        },
+        body: JSON.stringify({
+          model: this.config.model,
+          messages: [
+            {
+              role: 'system',
+              content: prompt.systemPrompt,
+            },
+            {
+              role: 'user',
+              content: userPrompt,
+            },
+          ],
+          temperature: this.config.temperature,
+          max_tokens: this.config.maxTokens,
+          response_format: { type: 'json_object' }, // JSON形式を強制
+        }),
+        signal: AbortSignal.timeout(this.config.timeout),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('LLMからの応答が空です');
+      }
+
+      // JSON解析
+      let gradingResult: LLMGradingResponse;
+      try {
+        gradingResult = JSON.parse(content);
+      } catch (parseError) {
+        // JSONパースに失敗した場合、正規表現でマニュアル抽出を試みる
+        gradingResult = this.extractGradingFromText(content);
+      }
+
+      // 結果の検証
+      this.validateGradingResponse(gradingResult, question.maxScore);
+
+      return gradingResult;
+    } catch (error) {
+      console.error('LLM採点に失敗:', error);
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('採点がタイムアウトしました');
+        }
+        throw new Error(`採点処理でエラーが発生しました: ${error.message}`);
+      }
+
+      throw new Error('採点処理で不明なエラーが発生しました');
+    }
+  }
+
+  // テキストから採点結果を抽出（JSONパース失敗時のフォールバック）
+  private extractGradingFromText(text: string): LLMGradingResponse {
+    const scoreMatch = text.match(/["']?score["']?\s*:\s*["']([○△×])["']/);
+    const pointsMatch = text.match(/["']?points?["']?\s*:\s*(\d+)/);
+    const reasonMatch = text.match(/["']?reason["']?\s*:\s*["']([^"']+)["']/);
+
+    if (!scoreMatch) {
+      throw new Error('採点結果のスコアを抽出できませんでした');
+    }
+
+    return {
+      score: scoreMatch[1] as '○' | '△' | '×',
+      points: pointsMatch ? parseInt(pointsMatch[1], 10) : 0,
+      reason: reasonMatch ? reasonMatch[1] : '採点理由を抽出できませんでした',
+    };
+  }
+
+  // 採点結果の妥当性検証
+  private validateGradingResponse(response: LLMGradingResponse, maxScore: number): void {
+    if (!['○', '△', '×'].includes(response.score)) {
+      throw new Error(`無効なスコア: ${response.score}`);
+    }
+
+    if (typeof response.points !== 'number' || response.points < 0 || response.points > maxScore) {
+      throw new Error(`無効な点数: ${response.points} (最大: ${maxScore})`);
+    }
+
+    if (!response.reason || typeof response.reason !== 'string' || response.reason.length === 0) {
+      throw new Error('採点理由が無効です');
+    }
+
+    // 点数とスコアの整合性チェック
+    const pointPercentage = (response.points / maxScore) * 100;
+
+    if (response.score === '○' && pointPercentage < 80) {
+      console.warn(`スコア○だが点数が低い: ${response.points}/${maxScore} (${pointPercentage.toFixed(1)}%)`);
+    } else if (response.score === '△' && (pointPercentage < 50 || pointPercentage >= 80)) {
+      console.warn(`スコア△だが点数が範囲外: ${response.points}/${maxScore} (${pointPercentage.toFixed(1)}%)`);
+    } else if (response.score === '×' && pointPercentage >= 50) {
+      console.warn(`スコア×だが点数が高い: ${response.points}/${maxScore} (${pointPercentage.toFixed(1)}%)`);
+    }
+  }
+
+  // バッチ採点（複数回答の一括処理）
+  async gradeBatch(
+    questions: Question[],
+    answers: Answer[],
+    onProgress?: (current: number, total: number) => void
+  ): Promise<LLMGradingResponse[]> {
+    const results: LLMGradingResponse[] = [];
+    const total = answers.length;
+
+    for (let i = 0; i < answers.length; i++) {
+      const answer = answers[i];
+      const question = questions.find(q => q.id === answer.questionId);
+
+      if (!question) {
+        throw new Error(`問題が見つかりません: ${answer.questionId}`);
+      }
+
+      try {
+        const result = await this.gradeAnswer(question, answer);
+        results.push(result);
+
+        if (onProgress) {
+          onProgress(i + 1, total);
+        }
+
+        // API呼び出し間隔を空ける（レート制限対策）
+        if (i < answers.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.error(`回答の採点に失敗 (学生ID: ${answer.studentId}, 問題: ${question.number}):`, error);
+
+        // エラーの場合は低スコアで代替
+        results.push({
+          score: '×',
+          points: 0,
+          reason: `採点処理でエラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`,
+        });
+
+        if (onProgress) {
+          onProgress(i + 1, total);
+        }
+      }
+    }
+
+    return results;
+  }
+
+  // 採点一貫性チェック（同じ回答を複数回採点して比較）
+  async checkConsistency(question: Question, answer: Answer, iterations: number = 3): Promise<{
+    results: LLMGradingResponse[];
+    isConsistent: boolean;
+    variance: number;
+  }> {
+    const results: LLMGradingResponse[] = [];
+
+    for (let i = 0; i < iterations; i++) {
+      const result = await this.gradeAnswer(question, answer);
+      results.push(result);
+
+      // 呼び出し間隔
+      if (i < iterations - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    // 点数のばらつきを計算
+    const points = results.map(r => r.points);
+    const average = points.reduce((sum, p) => sum + p, 0) / points.length;
+    const variance = points.reduce((sum, p) => sum + Math.pow(p - average, 2), 0) / points.length;
+
+    // 一貫性判定（標準偏差が配点の10%以下なら一貫している）
+    const standardDeviation = Math.sqrt(variance);
+    const isConsistent = standardDeviation <= (question.maxScore * 0.1);
+
+    return {
+      results,
+      isConsistent,
+      variance,
+    };
+  }
+}
+
+export const llmService = new LLMService({
+  endpoint: 'http://127.0.0.1:1234/v1',
+  model: 'gpt-4',
+  temperature: 0.1,
+  maxTokens: 500,
+  timeout: 30000
+});
