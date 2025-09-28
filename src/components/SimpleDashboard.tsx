@@ -3,6 +3,9 @@ import { useSimpleApp } from '../contexts/SimpleAppContext';
 import CsvUpload from './CsvUpload';
 import ExamSetup from './ExamSetup';
 import LLMSettings from './LLMSettings';
+import FirstGrading from './FirstGrading';
+import SecondGrading from './SecondGrading';
+import ExportResults from './ExportResults';
 
 type DashboardView = 'home' | 'exam-setup' | 'csv-upload' | 'first-grading' | 'second-grading' | 'export' | 'llm-settings';
 
@@ -251,20 +254,11 @@ const SimpleDashboard: React.FC = () => {
       case 'csv-upload':
         return <CsvUpload />;
       case 'first-grading':
-        return <div style={{ padding: '40px', textAlign: 'center' }}>
-          <h2>一次採点機能</h2>
-          <p>現在開発中です。近日公開予定。</p>
-        </div>;
+        return <FirstGrading />;
       case 'second-grading':
-        return <div style={{ padding: '40px', textAlign: 'center' }}>
-          <h2>二次採点機能</h2>
-          <p>現在開発中です。近日公開予定。</p>
-        </div>;
+        return <SecondGrading />;
       case 'export':
-        return <div style={{ padding: '40px', textAlign: 'center' }}>
-          <h2>エクスポート機能</h2>
-          <p>現在開発中です。近日公開予定。</p>
-        </div>;
+        return <ExportResults />;
       case 'llm-settings':
         return <LLMSettings />;
       default:

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSimpleApp } from '../contexts/SimpleAppContext';
-import { exportService } from '../services/exportService';
+import type { Answer, Question, SubQuestion } from '../contexts/SimpleAppContext';
 
 type ExportFormat = 'csv' | 'json' | 'html';
 
@@ -10,6 +10,42 @@ const ExportResults: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string>('');
 
+  const generateExportData = () => {
+    const exportData = state.gradingResults.map(result => {
+      const answer = state.answers.find(a => a.id === result.answerId);
+      const questionData = answer ? findSubQuestion(answer) : null;
+
+      if (!answer || !questionData) return null;
+
+      const { question, subQuestion } = questionData;
+      const finalGrade = result.secondGrade || result.firstGrade;
+
+      return {
+        studentId: answer.studentId,
+        questionNumber: question.number,
+        subQuestionNumber: subQuestion.number,
+        questionContent: subQuestion.content,
+        answerContent: answer.content,
+        characterCount: answer.characterCount,
+        maxScore: subQuestion.maxScore,
+        firstGradeScore: result.firstGrade.score,
+        firstGradePoints: result.firstGrade.points,
+        firstGradeReason: result.firstGrade.reason,
+        secondGradeScore: result.secondGrade?.score || '',
+        secondGradePoints: result.secondGrade?.points || '',
+        secondGradeReason: result.secondGrade?.reason || '',
+        secondGradeChanges: result.secondGrade?.changes || '',
+        finalScore: finalGrade.score,
+        finalPoints: finalGrade.points,
+        finalReason: finalGrade.reason,
+        gradedAt: result.firstGrade.gradedAt.toISOString(),
+        isSecondGraded: !!result.secondGrade
+      };
+    }).filter((data): data is NonNullable<typeof data> => data !== null);
+
+    return exportData;
+  };
+
   const handleExport = async () => {
     if (!state.currentExam || state.gradingResults.length === 0) return;
 
@@ -17,41 +53,134 @@ const ExportResults: React.FC = () => {
       setIsExporting(true);
       setExportStatus('エクスポート中...');
 
-      let blob: Blob;
+      const exportData = generateExportData();
+      let content: string;
       let filename: string;
+      let mimeType: string;
 
       switch (selectedFormat) {
         case 'csv':
-          blob = await exportService.exportToCsv(
-            state.gradingResults,
-            state.answers,
-            state.currentExam
-          );
+          const headers = [
+            '学生ID', '問題番号', '設問番号', '設問内容', '回答内容', '文字数', '配点',
+            '一次評価', '一次点数', '一次理由',
+            '二次評価', '二次点数', '二次理由', '変更内容',
+            '最終評価', '最終点数', '最終理由', '採点日時', '二次採点済み'
+          ];
+
+          const csvRows = [headers.join(',')];
+          exportData.forEach(data => {
+            const row = [
+              data.studentId,
+              data.questionNumber,
+              data.subQuestionNumber,
+              `"${data.questionContent.replace(/"/g, '""')}"`,
+              `"${data.answerContent.replace(/"/g, '""')}"`,
+              data.characterCount.toString(),
+              data.maxScore.toString(),
+              data.firstGradeScore,
+              data.firstGradePoints.toString(),
+              `"${data.firstGradeReason.replace(/"/g, '""')}"`,
+              data.secondGradeScore,
+              data.secondGradePoints.toString(),
+              `"${data.secondGradeReason.replace(/"/g, '""')}"`,
+              `"${data.secondGradeChanges.replace(/"/g, '""')}"`,
+              data.finalScore,
+              data.finalPoints.toString(),
+              `"${data.finalReason.replace(/"/g, '""')}"`,
+              data.gradedAt,
+              data.isSecondGraded ? 'はい' : 'いいえ'
+            ];
+            csvRows.push(row.join(','));
+          });
+
+          content = csvRows.join('\n');
           filename = `grading_results_${state.currentExam.name}_${new Date().toISOString().split('T')[0]}.csv`;
+          mimeType = 'text/csv;charset=utf-8';
           break;
 
         case 'json':
-          blob = await exportService.exportToJson(
-            state.gradingResults,
-            state.answers,
-            state.currentExam
-          );
+          content = JSON.stringify({
+            examName: state.currentExam.name,
+            exportDate: new Date().toISOString(),
+            totalResults: exportData.length,
+            results: exportData
+          }, null, 2);
           filename = `grading_results_${state.currentExam.name}_${new Date().toISOString().split('T')[0]}.json`;
+          mimeType = 'application/json';
           break;
 
         case 'html':
-          blob = await exportService.exportToHtml(
-            state.gradingResults,
-            state.answers,
-            state.currentExam
-          );
+          content = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>採点結果レポート - ${state.currentExam.name}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    .score-circle { width: 20px; height: 20px; border-radius: 3px; display: inline-block; text-align: center; color: white; font-weight: bold; }
+    .score-good { background-color: #28a745; }
+    .score-fair { background-color: #ffc107; }
+    .score-poor { background-color: #dc3545; }
+  </style>
+</head>
+<body>
+  <h1>採点結果レポート</h1>
+  <h2>${state.currentExam.name}</h2>
+  <p>エクスポート日時: ${new Date().toLocaleString('ja-JP')}</p>
+  <p>総採点数: ${exportData.length}件</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>学生ID</th>
+        <th>問題</th>
+        <th>回答内容</th>
+        <th>一次採点</th>
+        <th>二次採点</th>
+        <th>最終判定</th>
+        <th>採点理由</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${exportData.map(data => `
+        <tr>
+          <td>${data.studentId}</td>
+          <td>${data.questionNumber} ${data.subQuestionNumber}</td>
+          <td style="max-width: 300px; word-wrap: break-word;">${data.answerContent}</td>
+          <td>
+            <span class="score-circle score-${data.firstGradeScore === '○' ? 'good' : data.firstGradeScore === '△' ? 'fair' : 'poor'}">${data.firstGradeScore}</span>
+            ${data.firstGradePoints}/${data.maxScore}点
+          </td>
+          <td>
+            ${data.isSecondGraded ?
+              `<span class="score-circle score-${data.secondGradeScore === '○' ? 'good' : data.secondGradeScore === '△' ? 'fair' : 'poor'}">${data.secondGradeScore}</span> ${data.secondGradePoints}/${data.maxScore}点` :
+              '未実施'
+            }
+          </td>
+          <td>
+            <span class="score-circle score-${data.finalScore === '○' ? 'good' : data.finalScore === '△' ? 'fair' : 'poor'}">${data.finalScore}</span>
+            ${data.finalPoints}/${data.maxScore}点
+          </td>
+          <td style="max-width: 250px; word-wrap: break-word;">${data.finalReason}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+</body>
+</html>`;
           filename = `grading_results_${state.currentExam.name}_${new Date().toISOString().split('T')[0]}.html`;
+          mimeType = 'text/html';
           break;
 
         default:
           throw new Error('サポートされていない形式です');
       }
 
+      const blob = new Blob([content], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -302,12 +431,24 @@ const ExportResults: React.FC = () => {
     </div>
   );
 
+  const findSubQuestion = (answer: Answer): { question: Question; subQuestion: SubQuestion } | null => {
+    if (!state.currentExam) return null;
+
+    const question = state.currentExam.questions.find(q => q.id === answer.questionId);
+    if (!question) return null;
+
+    const subQuestion = question.subQuestions.find(sq => sq.id === answer.subQuestionId);
+    if (!subQuestion) return null;
+
+    return { question, subQuestion };
+  };
+
   const renderPreviewSample = () => {
     if (state.gradingResults.length === 0) return null;
 
     const sampleResult = state.gradingResults[0];
     const sampleAnswer = state.answers.find(a => a.id === sampleResult.answerId);
-    const sampleQuestion = state.currentExam?.questions.find(q => q.id === sampleAnswer?.questionId);
+    const questionData = sampleAnswer ? findSubQuestion(sampleAnswer) : null;
 
     return (
       <div style={{
@@ -331,7 +472,7 @@ const ExportResults: React.FC = () => {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px' }}>
               <span style={{ fontWeight: 'bold', color: '#666' }}>問題番号:</span>
-              <span>問{sampleQuestion?.number}</span>
+              <span>{questionData ? `${questionData.question.number} ${questionData.subQuestion.number}` : '不明'}</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px' }}>
               <span style={{ fontWeight: 'bold', color: '#666' }}>一次採点:</span>
