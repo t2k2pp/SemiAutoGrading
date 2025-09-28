@@ -1,10 +1,10 @@
-import type { LLMConfig, Question, Answer, LLMProvider } from '../contexts/SimpleAppContext';
+import type { LLMConfig, Question, Answer, SubQuestion } from '../contexts/SimpleAppContext';
 
 interface LLMGradingResponse {
   score: '○' | '△' | '×';
   points: number;
   reason: string;
-  confidence: number;
+  confidence?: number;
 }
 
 interface GradingPrompt {
@@ -68,7 +68,7 @@ export class LLMService {
   }
 
   // 採点プロンプト生成
-  private generateGradingPrompt(question: Question, answer: Answer): GradingPrompt {
+  private generateGradingPrompt(subQuestion: SubQuestion, answer: Answer): GradingPrompt {
     const systemPrompt = `You are a grader for the IPA Project Manager certification exam.
 Grade the answer according to the following criteria and return the result in JSON format.
 
@@ -85,15 +85,15 @@ Return the output in the following JSON format:
 }`;
 
     const questionContext = `QUESTION:
-${question.content}
+${subQuestion.content}
 
 QUESTION INTENT:
-${question.intention}
+${subQuestion.intention}
 
 SAMPLE ANSWER:
-${question.sampleAnswer}
+${subQuestion.sampleAnswer}
 
-MAX SCORE: ${question.maxScore} points`;
+MAX SCORE: ${subQuestion.maxScore} points`;
 
     const answerToGrade = `STUDENT ANSWER TO GRADE:
 Student ID: ${answer.studentId}
@@ -115,8 +115,8 @@ Answer Content: ${answer.content}`;
   }
 
   // LLMを使った採点実行
-  async gradeAnswer(question: Question, answer: Answer): Promise<LLMGradingResponse> {
-    const prompt = this.generateGradingPrompt(question, answer);
+  async gradeAnswer(subQuestion: SubQuestion, answer: Answer): Promise<LLMGradingResponse> {
+    const prompt = this.generateGradingPrompt(subQuestion, answer);
 
     const userPrompt = `${prompt.questionContext}
 
@@ -259,7 +259,7 @@ Please grade the student answer based on the above information and return the re
       }
 
       // 結果の検証
-      this.validateGradingResponse(gradingResult, question.maxScore);
+      this.validateGradingResponse(gradingResult, subQuestion.maxScore);
 
       return gradingResult;
     } catch (error) {
@@ -358,56 +358,18 @@ Please grade the student answer based on the above information and return the re
     }
   }
 
-  // バッチ採点（複数回答の一括処理）
+  // バッチ採点（複数回答の一括処理）- 将来実装予定
   async gradeBatch(
-    questions: Question[],
-    answers: Answer[],
-    onProgress?: (current: number, total: number) => void
+    _questions: Question[],
+    _answers: Answer[],
+    _onProgress?: (current: number, total: number) => void
   ): Promise<LLMGradingResponse[]> {
-    const results: LLMGradingResponse[] = [];
-    const total = answers.length;
-
-    for (let i = 0; i < answers.length; i++) {
-      const answer = answers[i];
-      const question = questions.find(q => q.id === answer.questionId);
-
-      if (!question) {
-        throw new Error(`問題が見つかりません: ${answer.questionId}`);
-      }
-
-      try {
-        const result = await this.gradeAnswer(question, answer);
-        results.push(result);
-
-        if (onProgress) {
-          onProgress(i + 1, total);
-        }
-
-        // API呼び出し間隔を空ける（レート制限対策）
-        if (i < answers.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      } catch (error) {
-        console.error(`回答の採点に失敗 (学生ID: ${answer.studentId}, 問題: ${question.number}):`, error);
-
-        // エラーの場合は低スコアで代替
-        results.push({
-          score: '×',
-          points: 0,
-          reason: `採点処理でエラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`,
-        });
-
-        if (onProgress) {
-          onProgress(i + 1, total);
-        }
-      }
-    }
-
-    return results;
+    // TODO: 新しいIPA構造に対応した実装が必要
+    throw new Error('バッチ採点機能は現在開発中です');
   }
 
   // 採点一貫性チェック（同じ回答を複数回採点して比較）
-  async checkConsistency(question: Question, answer: Answer, iterations: number = 3): Promise<{
+  async checkConsistency(subQuestion: SubQuestion, answer: Answer, iterations: number = 3): Promise<{
     results: LLMGradingResponse[];
     isConsistent: boolean;
     variance: number;
@@ -415,7 +377,7 @@ Please grade the student answer based on the above information and return the re
     const results: LLMGradingResponse[] = [];
 
     for (let i = 0; i < iterations; i++) {
-      const result = await this.gradeAnswer(question, answer);
+      const result = await this.gradeAnswer(subQuestion, answer);
       results.push(result);
 
       // 呼び出し間隔
@@ -431,7 +393,7 @@ Please grade the student answer based on the above information and return the re
 
     // 一貫性判定（標準偏差が配点の10%以下なら一貫している）
     const standardDeviation = Math.sqrt(variance);
-    const isConsistent = standardDeviation <= (question.maxScore * 0.1);
+    const isConsistent = standardDeviation <= (subQuestion.maxScore * 0.1);
 
     return {
       results,
@@ -442,9 +404,11 @@ Please grade the student answer based on the above information and return the re
 }
 
 export const llmService = new LLMService({
+  provider: 'lm-studio',
   endpoint: 'http://127.0.0.1:1234/v1',
   model: 'gemma-3n-e4b-it-text',
   temperature: 0.1,
   maxTokens: 500,
+  useMaxTokens: true,
   timeout: 120000
 });

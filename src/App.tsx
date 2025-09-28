@@ -1,4 +1,3 @@
-import React from 'react';
 import { SimpleAppProvider } from './contexts/SimpleAppContext';
 import SimpleDashboard from './components/SimpleDashboard';
 import './App.css';

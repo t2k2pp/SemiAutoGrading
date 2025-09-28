@@ -3,7 +3,7 @@ import { useSimpleApp } from '../contexts/SimpleAppContext';
 import type { Exam, Question, SubQuestion } from '../contexts/SimpleAppContext';
 
 const ExamSetup: React.FC = () => {
-  const { state, dispatch } = useSimpleApp();
+  const { dispatch } = useSimpleApp();
   const [examName, setExamName] = useState('');
   const [examDescription, setExamDescription] = useState('');
   const [questions, setQuestions] = useState<Omit<Question, 'id' | 'examId'>[]>([
@@ -74,7 +74,7 @@ const ExamSetup: React.FC = () => {
       maxScore: 10,
       characterLimit: undefined
     };
-    updatedQuestions[questionIndex].subQuestions = [...currentSubQuestions, newSubQuestion];
+    updatedQuestions[questionIndex].subQuestions = [...currentSubQuestions, newSubQuestion as SubQuestion];
     setQuestions(updatedQuestions);
   };
 
@@ -589,7 +589,10 @@ const ExamSetup: React.FC = () => {
                               <input
                                 type="number"
                                 value={subQuestion.characterLimit || ''}
-                                onChange={(e) => updateSubQuestion(index, subIndex, 'characterLimit', e.target.value ? parseInt(e.target.value) : undefined)}
+                                onChange={(e) => {
+                                const value = e.target.value;
+                                updateSubQuestion(index, subIndex, 'characterLimit', value ? parseInt(value) || 0 : 0);
+                              }}
                                 placeholder="制限なし"
                                 min="5"
                                 max="200"

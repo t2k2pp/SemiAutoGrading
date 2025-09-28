@@ -107,7 +107,7 @@ export class CSVService {
 
     // 統計情報計算
     const uniqueStudents = new Set(data.map(row => row.student_id)).size;
-    const uniqueQuestions = new Set(data.map(row => row.question_id)).size;
+    const uniqueQuestions = new Set(data.map(row => row.question_number)).size;
 
     return {
       success: errors.length === 0,
@@ -265,13 +265,15 @@ export class CSVService {
           continue;
         }
 
-        // Answerエンティティ作成
+        // Answerエンティティ作成（仮のsubQuestionIdを設定）
         const answer: Answer = {
           id: this.generateAnswerId(row.student_id, question.id),
           examId,
           studentId: row.student_id,
           questionId: question.id,
+          subQuestionId: question.subQuestions[0]?.id || 'default', // 最初の設問または仮ID
           content: row.answer_content.trim(),
+          characterCount: row.answer_content.trim().length,
           createdAt: new Date(),
         };
 
