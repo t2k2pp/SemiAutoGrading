@@ -1,73 +1,168 @@
-# React + TypeScript + Vite
+# IPA PM試験採点システム (IPA PM Exam Grading System)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+IPA（独立行政法人情報処理推進機構）のプロジェクトマネージャ試験の午後問題採点を支援するWebアプリケーションです。
 
-Currently, two official plugins are available:
+## 🎯 機能概要 (Features)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### ✅ 実装済み機能
+- **IPA試験形式対応**: ケーススタディ形式での複数設問管理
+- **問題作成**: 背景説明と複数設問を含む問題の作成・編集
+- **文字数管理**: リアルタイム文字数表示と制限設定
+- **マルチLLM対応**: 複数のAIプロバイダーとの連携
+  - LM Studio (OpenAI互換)
+  - Ollama
+  - Azure OpenAI
+  - Google Gemini API
+- **採点機能**: AI による一次採点と人間による二次採点
+- **データ管理**: IndexedDBによるローカルデータ保存
+- **結果エクスポート**: 採点結果のCSV/Excel出力
 
-## React Compiler
+### 🚧 開発予定機能
+- **CSV/JSON取り込み**: 回答データの一括取り込み
+- **採点一貫性チェック**: 複数回採点による品質確認
+- **統計機能**: 採点結果の分析とレポート生成
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🏗️ 技術構成 (Technology Stack)
 
-## Expanding the ESLint configuration
+- **フロントエンド**: React 18 + TypeScript + Vite
+- **状態管理**: React useReducer + Context API
+- **データ保存**: IndexedDB (Dexie.js)
+- **UI**: カスタムCSS（レスポンシブ対応）
+- **LLM統合**: REST API（各プロバイダー対応）
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🚀 セットアップ (Setup)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 前提条件 (Prerequisites)
+- Node.js 18以上
+- npm または yarn
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### インストール (Installation)
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# リポジトリのクローン
+git clone https://github.com/t2k2pp/SemiAutoGrading.git
+cd SemiAutoGrading
+
+# 依存関係のインストール
+npm install
+
+# 開発サーバーの起動
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+アプリケーションは `http://localhost:5173` で起動します。
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### ビルド (Build)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# プロダクション用ビルド
+npm run build
+
+# ビルド結果のプレビュー
+npm run preview
 ```
+
+## 📖 使用方法 (Usage)
+
+### 1. 試験設定
+1. 「試験設定」タブで新しい試験を作成
+2. ケーススタディタイトルと背景説明を入力
+3. 複数の設問を追加（設問内容、出題意図、配点、文字制限）
+4. 「サンプル試験を読み込み」でIPA形式の例を確認可能
+
+### 2. LLM設定
+1. 「LLM設定」タブでAIプロバイダーを選択
+2. エンドポイント、モデル、パラメータを設定
+3. 接続テストで動作確認
+
+### 3. 回答データ読み込み
+1. 「CSV読み込み」タブで回答データをアップロード
+2. 形式: `student_id, question_number, answer_content`
+
+### 4. 採点実行
+1. 「一次採点」でAI採点を実行
+2. 「二次採点」で人間による確認・調整
+3. 「エクスポート」で結果を出力
+
+## 🗂️ プロジェクト構造 (Project Structure)
+
+```
+src/
+├── components/          # Reactコンポーネント
+│   ├── ExamSetup.tsx   # 試験設定画面
+│   ├── CsvUpload.tsx   # CSV読み込み画面
+│   ├── FirstGrading.tsx # 一次採点画面
+│   ├── SecondGrading.tsx # 二次採点画面
+│   ├── LLMSettings.tsx # LLM設定画面
+│   └── ...
+├── contexts/           # React Context（状態管理）
+│   └── SimpleAppContext.tsx
+├── services/           # ビジネスロジック
+│   ├── llmService.ts   # LLM API連携
+│   ├── csvService.ts   # CSV処理
+│   ├── dataService.ts  # データ永続化
+│   └── ...
+└── types/              # TypeScript型定義
+```
+
+## 🔧 LLMプロバイダー設定 (LLM Provider Configuration)
+
+### LM Studio
+```
+エンドポイント: http://127.0.0.1:1234/v1
+モデル: お使いのモデル名
+```
+
+### Ollama
+```
+エンドポイント: http://localhost:11434/v1
+モデル: llama2, gemma等
+```
+
+### Azure OpenAI
+```
+エンドポイント: https://your-resource.openai.azure.com
+APIキー: あなたのAPIキー
+APIバージョン: 2024-02-01
+デプロイメントID: あなたのデプロイメント名
+```
+
+### Google Gemini
+```
+エンドポイント: https://generativelanguage.googleapis.com/v1beta
+モデル: gemini-pro
+APIキー: あなたのAPIキー
+```
+
+## 📋 CSV形式 (CSV Format)
+
+回答データのCSV形式：
+
+```csv
+student_id,question_number,answer_content
+S001,問1-設問1,プロジェクト管理における...
+S001,問1-設問2,要件定義では...
+S002,問1-設問1,システム開発において...
+```
+
+## 🤝 コントリビューション (Contributing)
+
+1. このリポジトリをフォーク
+2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
+3. 変更をコミット (`git commit -m 'Add amazing feature'`)
+4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
+5. プルリクエストを作成
+
+## 📄 ライセンス (License)
+
+このプロジェクトはMITライセンスの下で公開されています。
+
+## 🙏 謝辞 (Acknowledgments)
+
+- IPA（独立行政法人情報処理推進機構）の試験制度
+- React、TypeScript、Viteコミュニティ
+- 各LLMプロバイダーのAPI提供
+
+---
+
+**🤖 Generated with [Claude Code](https://claude.ai/code)**

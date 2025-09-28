@@ -1,8 +1,14 @@
 {
   "name": "ipa-pm-grader",
+  "description": "IPA PM試験採点システム - IPA Project Manager Exam Grading System",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
+  "author": "t2k2pp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/t2k2pp/SemiAutoGrading.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
