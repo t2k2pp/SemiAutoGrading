@@ -8,7 +8,7 @@ IPA（情報処理推進機構）プロジェクトマネージャ試験のよ�
 ### 基本機能
 1. **試験設定機能**: 試験の作成・編集（問題と設問の階層構造管理）
 2. **回答データ管理**: 学生の回答データの手動入力・編集
-3. **LLM一次採点**: 外部LLM APIを使用した自動採点
+3. **Claude一次採点**: Claude自身による推論ベースの自動採点
 4. **採点結果表示**: 採点結果の一覧表示と詳細確認
 
 ### データ構造
@@ -82,7 +82,7 @@ interface GradingResult {
 
 ### レイアウト
 - シングルページアプリケーション
-- 上部にタブナビゲーション（試験設定、回答入力、一次採点、結果確認）
+- 上部にタブナビゲーション（試験設定、回答入力、Claude採点、結果確認）
 - レスポンシブデザイン対応
 
 ### 画面構成
@@ -98,11 +98,11 @@ interface GradingResult {
 - 設問選択→回答内容入力→文字数自動計算
 - 回答一覧表示・編集・削除
 
-#### 3. 一次採点タブ
-- LLM設定（API設定は簡略化、モックでも可）
-- 採点開始ボタン
+#### 3. Claude採点タブ
+- 採点開始ボタン（設定不要）
 - 採点進捗表示（プログレスバー、現在処理中の回答表示）
 - 採点完了時の統計表示
+- Claude推論による高精度な採点結果
 
 #### 4. 結果確認タブ
 - 採点結果一覧（学生ID、問題、評価、点数、採点理由）
@@ -115,38 +115,62 @@ interface GradingResult {
 - **React 18** (CDN経由で読み込み)
 - **CSS-in-JS**スタイリング
 - **localStorage**でデータ永続化
+- **Claude内蔵推論**による採点（API不要）
 
 ### データ管理
 - Reactの`useState`と`useEffect`でローカル状態管理
 - データのCRUD操作用カスタムフック
 
-### LLM API連携（簡略版）
+### Claude直接採点機能
 ```javascript
-// モック実装例
-const mockLLMGrading = async (subQuestion, answer) => {
-  // 実際のAPI呼び出しの代わりに、キーワードマッチングで簡単な採点
-  const keywords = subQuestion.keywords;
-  const content = answer.content.toLowerCase();
+// Claude自身による推論ベースの採点
+const claudeDirectGrading = (subQuestion, answer) => {
+  // アーティファクト内でClaude自身の推論能力を活用
+  // プロンプトエンジニアリングで採点基準を明確に伝達
 
-  let score = '×';
-  let points = 0;
-  let reason = '回答が不十分です。';
+  const gradingPrompt = `IPA試験の記述式問題を採点してください。
 
-  const matchedKeywords = keywords.filter(keyword =>
-    content.includes(keyword.toLowerCase())
-  );
+【設問】
+${subQuestion.content}
 
-  if (matchedKeywords.length >= keywords.length * 0.8) {
-    score = '○';
-    points = subQuestion.maxScore;
-    reason = `期待キーワード（${matchedKeywords.join('、')}）が含まれており、適切な回答です。`;
-  } else if (matchedKeywords.length >= keywords.length * 0.5) {
-    score = '△';
-    points = Math.floor(subQuestion.maxScore * 0.6);
-    reason = `一部のキーワード（${matchedKeywords.join('、')}）は含まれていますが、不足している要素があります。`;
-  }
+【出題意図】
+${subQuestion.intention}
 
-  return { score, points, reason };
+【期待要素】
+${subQuestion.keywords.join('、')}
+
+【採点基準】
+○ (${subQuestion.maxScore}点): ${subQuestion.scoreRubric.excellent}
+△ (${Math.floor(subQuestion.maxScore * 0.6)}点): ${subQuestion.scoreRubric.good}
+× (0点): ${subQuestion.scoreRubric.poor}
+
+【受験者回答】
+${answer.content}
+
+この回答を上記基準で評価し、以下の形式で結果を返してください：
+評価: ○/△/×
+点数: 数値
+理由: 具体的な評価理由（150文字以内）`;
+
+  // Claude自身がこのプロンプトを処理して採点結果を生成
+  // アーティファクト内でClaude推論を直接活用
+
+  // 実装注意: この関数内でClaude自身に問いかけて回答を生成する仕組み
+  // アーティファクトの特性を活かした実装方法
+};
+
+// 採点結果パース用のヘルパー関数
+const parseClaudeGradingResult = (claudeResponse) => {
+  // Claudeの回答から構造化データを抽出
+  const scoreMatch = claudeResponse.match(/評価[：:]\s*([○△×])/);
+  const pointsMatch = claudeResponse.match(/点数[：:]\s*(\d+)/);
+  const reasonMatch = claudeResponse.match(/理由[：:]\s*(.+?)(?:\n|$)/);
+
+  return {
+    score: scoreMatch ? scoreMatch[1] : '×',
+    points: pointsMatch ? parseInt(pointsMatch[1]) : 0,
+    reason: reasonMatch ? reasonMatch[1].trim() : '採点処理エラー'
+  };
 };
 ```
 
@@ -222,8 +246,9 @@ const sampleAnswers = [
 2. **React CDN**を使用してJSXをブラウザで直接実行
 3. **CSS-in-JS**でスタイリング
 4. **localStorage**でデータ永続化
-5. **モック採点機能**でLLM APIを模擬
+5. **Claude自身の推論能力**を直接活用した採点
 6. **レスポンシブ対応**
+7. **API設定不要**の簡単操作
 
 ## 重要な注意点
 
@@ -232,5 +257,27 @@ const sampleAnswers = [
 - ユーザビリティを重視したUI設計
 - 採点進捗の視覚的フィードバック
 - 日本語の文字数計算を正確に実装
+- **Claude推論の活用**: アーティファクト内でClaude自身が直接採点を行う
+- **設定レス運用**: API設定やLLM設定を一切必要としない
+- **高精度採点**: キーワードマッチングではなく、文脈理解による採点
 
-この仕様に基づいて、IPA試験採点システムのアーティファクトを作成してください。
+## Claude採点の実装ポイント
+
+### アーティファクト内でのClaude活用方法
+```javascript
+// アーティファクト特有の実装パターン
+const performGrading = async (subQuestion, answer) => {
+  // Claude自身に採点を依頼する内部処理
+  // この部分でアーティファクトの特性を活かした実装
+
+  const prompt = generateGradingPrompt(subQuestion, answer);
+
+  // アーティファクト内でClaude推論を直接実行
+  // 外部API呼び出しではなく、内部的な推論処理
+  const result = await claudeInternalReasoning(prompt);
+
+  return parseClaudeGradingResult(result);
+};
+```
+
+この仕様に基づいて、Claude自身が直接採点を行うIPA試験採点システムのアーティファクトを作成してください。
